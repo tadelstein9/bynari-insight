@@ -1,13 +1,16 @@
 """
 Bynari Insight — Streamlit web app
 Independent structural reference data for eBay sellers.
+
+All data access (cassini.db categories, eBay Browse API) is mediated
+through api.tadelstein.com. The Streamlit app itself ships no data
+and holds no credentials.
 """
 
 import base64
 import io
 import json
 import re
-import sqlite3
 import tempfile
 from pathlib import Path
 from urllib.parse import quote_plus, urlparse, parse_qs
@@ -55,94 +58,76 @@ st.markdown(
 
 
 # --------------------------------------------------------------------
-# cassini.db access
+# Bynari API (api.tadelstein.com)
 # --------------------------------------------------------------------
 
-CASSINI_DB_PATH = "cassini.db"
+BYNARI_API_BASE = "https://api.tadelstein.com"
+BYNARI_ITEM_URL = f"{BYNARI_API_BASE}/item.php"
+BYNARI_CATEGORY_URL = f"{BYNARI_API_BASE}/category.php"
+
+# User-Agent so HostGator's mod_security doesn't reject us as a bot.
+BYNARI_UA = {"User-Agent": "Mozilla/5.0 (Bynari Insight Streamlit)"}
 
 
-@st.cache_resource
-def get_cassini_connection():
-    conn = sqlite3.connect(
-        f"file:{CASSINI_DB_PATH}?mode=ro",
-        uri=True,
-        check_same_thread=False,
-    )
-    conn.row_factory = sqlite3.Row
-    return conn
+def _api_get(url: str, params: dict, timeout: int = 15):
+    """Make a GET request to the Bynari API. Returns (data, error_str)."""
+    try:
+        r = requests.get(url, params=params, headers=BYNARI_UA, timeout=timeout)
+    except requests.exceptions.Timeout:
+        return None, "Request timed out. Try again in a moment."
+    except requests.exceptions.RequestException as e:
+        return None, f"Network error: {e}"
+
+    if r.status_code >= 500:
+        return None, f"API error (HTTP {r.status_code})."
+
+    try:
+        return r.json(), None
+    except ValueError:
+        snippet = (r.text or "")[:200]
+        return None, f"Couldn't parse API response. First 200 chars: {snippet}"
 
 
+# --------------------------------------------------------------------
+# Category lookups (via api.tadelstein.com/category.php)
+# --------------------------------------------------------------------
+
+@st.cache_data(ttl=3600)
 def category_lookup_by_id(category_id: str):
-    conn = get_cassini_connection()
-    row = conn.execute(
-        "SELECT category_id, category_name, parent_id, full_path, leaf_category "
-        "FROM categories WHERE category_id = ?",
-        (str(category_id),),
-    ).fetchone()
-    return dict(row) if row else None
+    """Returns dict or None."""
+    data, err = _api_get(
+        BYNARI_CATEGORY_URL,
+        {"op": "by_id", "id": str(category_id)},
+    )
+    if err or data is None:
+        return None
+    return data if isinstance(data, dict) else None
 
 
+@st.cache_data(ttl=3600)
 def category_lookup_by_name(name: str, limit: int = 5):
-    """
-    Find categories whose name or full_path matches the given string.
-    Returns a list of dicts. Empty list if nothing matches.
-    """
+    """Returns list of dicts. Empty list if nothing matches."""
     if not name:
         return []
-    conn = get_cassini_connection()
-    # First try exact match on category_name
-    rows = conn.execute(
-        "SELECT category_id, category_name, parent_id, full_path, leaf_category "
-        "FROM categories "
-        "WHERE LOWER(category_name) = LOWER(?) AND leaf_category = 1 "
-        "LIMIT ?",
-        (name.strip(), limit),
-    ).fetchall()
-    if rows:
-        return [dict(r) for r in rows]
-    # Fall back to LIKE on category_name
-    rows = conn.execute(
-        "SELECT category_id, category_name, parent_id, full_path, leaf_category "
-        "FROM categories "
-        "WHERE LOWER(category_name) LIKE LOWER(?) AND leaf_category = 1 "
-        "LIMIT ?",
-        (f"%{name.strip()}%", limit),
-    ).fetchall()
-    if rows:
-        return [dict(r) for r in rows]
-    # Last resort: search full_path
-    rows = conn.execute(
-        "SELECT category_id, category_name, parent_id, full_path, leaf_category "
-        "FROM categories "
-        "WHERE LOWER(full_path) LIKE LOWER(?) AND leaf_category = 1 "
-        "LIMIT ?",
-        (f"%{name.strip()}%", limit),
-    ).fetchall()
-    return [dict(r) for r in rows]
+    data, err = _api_get(
+        BYNARI_CATEGORY_URL,
+        {"op": "by_name", "q": name.strip(), "limit": limit},
+    )
+    if err or data is None:
+        return []
+    return data if isinstance(data, list) else []
 
 
+@st.cache_data(ttl=3600)
 def item_specifics_for_category(category_id: str):
-    conn = get_cassini_connection()
-    specifics = conn.execute(
-        "SELECT id, aspect_name, aspect_mode, required, data_type "
-        "FROM item_specifics WHERE category_id = ? "
-        "ORDER BY required DESC, aspect_name",
-        (str(category_id),),
-    ).fetchall()
-    result = []
-    for s in specifics:
-        values = conn.execute(
-            "SELECT value FROM allowed_values WHERE specific_id = ? ORDER BY value",
-            (s["id"],),
-        ).fetchall()
-        result.append({
-            "aspect_name": s["aspect_name"],
-            "aspect_mode": s["aspect_mode"],
-            "required": bool(s["required"]),
-            "data_type": s["data_type"],
-            "allowed_values": [v["value"] for v in values],
-        })
-    return result
+    """Returns list of dicts: aspect_name, required, allowed_values, etc."""
+    data, err = _api_get(
+        BYNARI_CATEGORY_URL,
+        {"op": "specifics", "id": str(category_id)},
+    )
+    if err or data is None:
+        return []
+    return data if isinstance(data, list) else []
 
 
 # --------------------------------------------------------------------
@@ -177,23 +162,17 @@ def extract_category_id(text: str):
 
 
 # --------------------------------------------------------------------
-# Bynari API (api.tadelstein.com) — used by Tab 3
+# Listing fetch (via api.tadelstein.com/item.php — Browse API)
 # --------------------------------------------------------------------
 
-BYNARI_API_URL = "https://api.tadelstein.com/item.php"
-
-
 def fetch_listing(item_id: str):
-    """
-    Call the Bynari API endpoint for an item.
-    Returns (data_dict, error_string). One will be None.
-    """
+    """Returns (data_dict, error_string)."""
     try:
         r = requests.get(
-            BYNARI_API_URL,
+            BYNARI_ITEM_URL,
             params={"item": item_id},
+            headers=BYNARI_UA,
             timeout=15,
-            headers={"User-Agent": "Mozilla/5.0 (Bynari Insight Streamlit)"},
         )
     except requests.exceptions.Timeout:
         return None, "Request timed out. Try again in a moment."
@@ -209,17 +188,12 @@ def fetch_listing(item_id: str):
 
     try:
         return r.json(), None
-    except Exception as e:
-        return None, f"Parse error: {type(e).__name__}: {e} | First 200 chars: {r.text[:200]}"
+    except ValueError:
+        return None, "Couldn't parse the response from eBay."
 
 
 def translate_browse_response(api_data: dict) -> dict:
-    """
-    Translate eBay Browse API response into the shape the rendering
-    code expects: title, specs (dict), catId, itemId.
-    """
-    # Item specifics live in localizedAspects as a list of
-    # {name, value} dicts in Browse API. Flatten to a dict.
+    """Translate Browse API response into the shape rendering code expects."""
     specs = {}
     for aspect in api_data.get("localizedAspects") or []:
         name = aspect.get("name", "").strip()
@@ -227,13 +201,11 @@ def translate_browse_response(api_data: dict) -> dict:
         if name and value:
             specs[name] = value
 
-    # categoryIdPath is "58058|175673|27386" — leaf is the last one
     cat_id = ""
     cat_path = api_data.get("categoryIdPath", "")
     if cat_path:
         cat_id = cat_path.split("|")[-1]
 
-    # itemId in Browse API is "v1|206276547370|0" — extract the middle
     raw_item_id = api_data.get("itemId", "")
     item_id_clean = ""
     if "|" in raw_item_id:
@@ -280,7 +252,6 @@ def render_specific(s: dict, indent: str = "    ") -> list:
 
 
 def build_single_category_datasheet(cat: dict, query: str = "") -> str:
-    """Datasheet for one category — used by Tab 1."""
     specifics = item_specifics_for_category(cat["category_id"])
     required = [s for s in specifics if s["required"]]
     recommended = [s for s in specifics if not s["required"]]
@@ -321,11 +292,6 @@ def build_single_category_datasheet(cat: dict, query: str = "") -> str:
 
 
 def build_multi_category_datasheet(category_pairs: list) -> str:
-    """
-    Datasheet covering multiple categories — used by Tab 2.
-    category_pairs is a list of (lqr_category_name, condition, resolved_cat_dict)
-    where resolved_cat_dict may be None if cassini.db has no match.
-    """
     out = []
     out.append("BYNARI INSIGHT — CATEGORY DATASHEETS")
     out.append("=" * 60)
@@ -528,7 +494,6 @@ with tab2:
                 "the file in Excel to confirm it's the standard LQR."
             )
         else:
-            # Categories the analyzer flagged at least one listing in
             categories_with_findings = {}
             for l in report.listings:
                 if l.severity != "NONE":
@@ -629,13 +594,11 @@ with tab3:
             else:
                 data = translate_browse_response(api_data)
 
-                # Resolve the category from cassini.db
                 cat = None
                 cat_id = data.get("catId", "")
                 if cat_id:
                     cat = category_lookup_by_id(cat_id)
 
-                # Header info
                 st.success("Listing fetched.")
                 st.markdown(f"**Title:** {data['title'] or '_(not found)_'}")
                 if data["itemId"]:
@@ -667,7 +630,6 @@ with tab3:
 
                 st.markdown("---")
 
-                # Title observations
                 st.markdown("### Title")
                 title = data["title"]
                 title_len = len(title)
@@ -690,7 +652,6 @@ with tab3:
                     f"**{'present' if has_condition else 'not detected'}**"
                 )
 
-                # Item specifics on listing
                 specs = data["specs"]
                 st.markdown("---")
                 st.markdown(
@@ -713,7 +674,6 @@ with tab3:
                         hide_index=True,
                     )
 
-                # Compare against cassini.db if we have a category
                 if cat is not None:
                     cassini_specifics = item_specifics_for_category(
                         cat["category_id"]
