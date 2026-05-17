@@ -373,85 +373,247 @@ tab1, tab2, tab3 = st.tabs([
 
 
 # ========================  TAB 1  ===================================
-
 with tab1:
-    st.header("Category datasheet")
+    st.header("Category Finder")
     st.write(
-        "Type what you're looking at. Open eBay in a new tab to find "
-        "your category. Paste any eBay URL or category ID back into "
-        "Bynari to get the structural data — required fields, "
-        "recommended fields, allowed values — for that category."
+        "Describe what you're selling in plain English. Bynari finds the "
+        "right eBay category, then gives you the structural data you need "
+        "to list it — what's required, what's recommended, what allowed "
+        "values eBay accepts."
     )
 
-    col_a, col_b = st.columns([3, 1])
-    with col_a:
-        query = st.text_input(
-            "Describe the item",
-            placeholder="e.g., Crucial X8 NVMe SSD 1TB",
-            key="t1_query",
+    BROKER_BASE_TAB1 = "https://api.tadelstein.com"
+    BROKER_TIMEOUT_TAB1 = 10
+    BROKER_HEADERS_TAB1 = {
+        "Accept": "application/json",
+        "User-Agent": "Bynari-Insight/0.1",
+    }
+
+    DIRECTIVE_TAB1 = (
+        "eBay will expect you to fill in these items when you create "
+        "your listing. If you skip the required fields, eBay will "
+        "publish your listing but it won't rank in search — buyers "
+        "won't see it. The recommended fields aren't strictly required, "
+        "but listings that include them appear in far more buyer filter "
+        "searches. Use the allowed values exactly as shown where they're "
+        "listed; eBay matches those terms against buyer filters."
+    )
+
+    REQUIRED_NOTE_TAB1 = (
+        "Fill in every field below. Listings without these are not "
+        "ranked in search results."
+    )
+
+    RECOMMENDED_NOTE_TAB1 = (
+        "Fill in as many as apply. Each one is a buyer filter your "
+        "listing appears in."
+    )
+
+    def _tab1_breadcrumb(category_name, ancestors):
+        path = [a["categoryName"] for a in reversed(ancestors)]
+        path.append(category_name)
+        return " > ".join(path)
+
+    def _tab1_render_aspect(aspect):
+        name = aspect.get("name", "(unnamed)")
+        mode = aspect.get("mode", "")
+        allowed = aspect.get("allowedValues", []) or []
+        count = aspect.get("allowedValueCount", len(allowed))
+        label = f"• **{name}**"
+        if mode == "SELECTION_ONLY":
+            label += " — selection only"
+        elif mode == "FREE_TEXT":
+            label += " — free text"
+        st.markdown(label)
+        if count > 0:
+            preview = ", ".join(allowed[:8])
+            if count > 8:
+                preview += f", … ({count} total)"
+            st.caption(f"Allowed values: {preview}")
+
+    def _tab1_build_pdf(category, aspects):
+        from io import BytesIO
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Paragraph
+
+        buf = BytesIO()
+        doc = SimpleDocTemplate(
+            buf, pagesize=letter,
+            leftMargin=0.75 * inch, rightMargin=0.75 * inch,
+            topMargin=0.75 * inch, bottomMargin=0.75 * inch,
+            title=f"Bynari Insight — {category['name']}",
+            author="Bynari Insight",
         )
-    with col_b:
-        st.write("")
-        st.write("")
-        if query.strip():
-            sold_url = build_ebay_search_url(query, sold=True)
-            active_url = build_ebay_search_url(query, sold=False)
-            st.link_button("See what sold ↗", sold_url,
-                           use_container_width=True)
-            st.link_button("See active listings ↗", active_url,
-                           use_container_width=True)
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle("t", parent=styles["Title"], fontSize=18, spaceAfter=6)
+        sub = ParagraphStyle("s", parent=styles["Normal"], fontSize=10, textColor="#555555", spaceAfter=12)
+        d = ParagraphStyle("d", parent=styles["BodyText"], fontSize=10, leading=14, spaceAfter=14)
+        h = ParagraphStyle("h", parent=styles["Heading2"], fontSize=13, spaceBefore=12, spaceAfter=4)
+        n = ParagraphStyle("n", parent=styles["BodyText"], fontSize=9, textColor="#555555", spaceAfter=10)
+        a_s = ParagraphStyle("a", parent=styles["BodyText"], fontSize=10, leftIndent=12, spaceAfter=2)
+        v = ParagraphStyle("v", parent=styles["BodyText"], fontSize=9, textColor="#444444", leftIndent=24, spaceAfter=6)
 
-    if query.strip():
-        st.markdown(
-            '<div class="small-note">eBay opens in a new tab in your '
-            "own browser. Bynari does not visit eBay.</div>",
-            unsafe_allow_html=True,
-        )
+        story = [
+            Paragraph(f"Datasheet — {category['name']}", title_style),
+            Paragraph(f"{category['breadcrumb']} &nbsp;·&nbsp; Category ID {category['id']}", sub),
+            Paragraph(DIRECTIVE_TAB1, d),
+        ]
 
-    st.markdown("---")
+        req = [x for x in aspects if x.get("required")]
+        rec = [x for x in aspects if not x.get("required")]
 
-    st.subheader("Generate the datasheet")
-    st.write(
-        "Paste any eBay URL from the tab you just opened (a search "
-        "results URL, a listing URL, or a category page URL), or paste "
-        "the numeric category ID."
-    )
-
-    pasted = st.text_input(
-        "eBay URL or category ID",
-        placeholder="https://www.ebay.com/sch/i.html?... or 175669",
-        key="t1_paste",
-    )
-
-    if st.button("Generate datasheet", type="primary", key="t1_gen"):
-        cat_id = extract_category_id(pasted)
-        if cat_id is None:
-            st.error(
-                "Couldn't find a category ID in that. Paste an eBay URL "
-                "that contains `_sacat=` in the query string, or just "
-                "the numeric category ID."
-            )
+        story.append(Paragraph(f"Required item specifics ({len(req)})", h))
+        story.append(Paragraph(REQUIRED_NOTE_TAB1, n))
+        if req:
+            for x in req:
+                _tab1_pdf_aspect(story, x, a_s, v)
         else:
-            cat = category_lookup_by_id(cat_id)
-            if cat is None:
-                st.error(
-                    f"Category ID {cat_id} is not in Bynari's data."
-                )
+            story.append(Paragraph("None recorded.", n))
+
+        story.append(Paragraph(f"Recommended item specifics ({len(rec)})", h))
+        story.append(Paragraph(RECOMMENDED_NOTE_TAB1, n))
+        if rec:
+            for x in rec:
+                _tab1_pdf_aspect(story, x, a_s, v)
+        else:
+            story.append(Paragraph("None recorded.", n))
+
+        doc.build(story)
+        return buf.getvalue()
+
+    def _tab1_pdf_aspect(story, aspect, aspect_style, values_style):
+        from reportlab.platypus import Paragraph
+        name = aspect.get("name", "(unnamed)")
+        mode = aspect.get("mode", "")
+        allowed = aspect.get("allowedValues", []) or []
+        count = aspect.get("allowedValueCount", len(allowed))
+        label = f"<b>{name}</b>"
+        if mode == "SELECTION_ONLY":
+            label += " — selection only"
+        elif mode == "FREE_TEXT":
+            label += " — free text"
+        story.append(Paragraph(label, aspect_style))
+        if count > 0:
+            preview = ", ".join(allowed[:8])
+            if count > 8:
+                preview += f", … ({count} total)"
+            story.append(Paragraph(f"Allowed values: {preview}", values_style))
+
+    if "tab1_last_query" not in st.session_state:
+        st.session_state.tab1_last_query = None
+    if "tab1_selected" not in st.session_state:
+        st.session_state.tab1_selected = None
+    if "tab1_suggestions" not in st.session_state:
+        st.session_state.tab1_suggestions = None
+
+    tab1_query = st.text_input(
+        "What are you selling?",
+        key="tab1_query_input",
+        help="A short description. Examples: '8 GB RAM', "
+             "'mens leather jacket', 'vintage pocket watch'",
+    )
+
+    if st.button("Find category", type="primary", key="tab1_find_btn"):
+        st.session_state.tab1_selected = None
+        st.session_state.tab1_suggestions = None
+        st.session_state.tab1_last_query = tab1_query
+        try:
+            r = requests.get(
+                f"{BROKER_BASE_TAB1}/category_suggestions.php",
+                params={"q": tab1_query},
+                headers=BROKER_HEADERS_TAB1,
+                timeout=BROKER_TIMEOUT_TAB1,
+            )
+            r.raise_for_status()
+            st.session_state.tab1_suggestions = r.json()
+        except requests.RequestException as e:
+            st.error(f"Could not reach the category service: {e}")
+
+    if st.session_state.tab1_suggestions:
+        st.divider()
+        st.subheader(f"Categories for: {st.session_state.tab1_last_query}")
+        st.caption(
+            "eBay ranks these by how likely each category fits your "
+            "item. Pick the one that matches what you have."
+        )
+        cats = st.session_state.tab1_suggestions.get("categorySuggestions", [])
+        if not cats:
+            st.info("No category suggestions returned for that query.")
+        for i, sug in enumerate(cats):
+            c = sug["category"]
+            ancestors = sug.get("categoryTreeNodeAncestors", [])
+            breadcrumb = _tab1_breadcrumb(c["categoryName"], ancestors)
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.markdown(f"**{c['categoryName']}**")
+                st.caption(f"{breadcrumb} · Category ID `{c['categoryId']}`")
+            with col2:
+                if st.button("Use this", key=f"tab1_pick_{i}"):
+                    st.session_state.tab1_selected = {
+                        "id": c["categoryId"],
+                        "name": c["categoryName"],
+                        "breadcrumb": breadcrumb,
+                    }
+                    st.success("Got it — your datasheet is below ↓")
+
+    if st.session_state.tab1_selected:
+        sel = st.session_state.tab1_selected
+        st.divider()
+        st.subheader(f"Datasheet — {sel['name']}")
+        st.caption(f"{sel['breadcrumb']} · Category ID `{sel['id']}`")
+        try:
+            r = requests.get(
+                f"{BROKER_BASE_TAB1}/item_aspects.php",
+                params={"category_id": sel["id"]},
+                headers=BROKER_HEADERS_TAB1,
+                timeout=BROKER_TIMEOUT_TAB1,
+            )
+            r.raise_for_status()
+            data = r.json()
+        except requests.RequestException as e:
+            st.error(f"Could not load the datasheet: {e}")
+            data = None
+
+        if data is not None:
+            aspects = data.get("aspects", [])
+            if not aspects:
+                st.info("No item specifics are recorded for this category.")
             else:
-                doc = build_single_category_datasheet(
-                    cat, query or "(no query entered)"
-                )
-                st.text_area(
-                    "Category datasheet — copy this and hand it to your LLM",
-                    value=doc,
-                    height=600,
-                    key="t1_output",
-                )
+                st.info(DIRECTIVE_TAB1)
+                req = [x for x in aspects if x.get("required")]
+                rec = [x for x in aspects if not x.get("required")]
 
+                st.markdown(f"### Required item specifics ({len(req)})")
+                st.caption(REQUIRED_NOTE_TAB1)
+                if req:
+                    for x in req:
+                        _tab1_render_aspect(x)
+                else:
+                    st.caption("None recorded.")
 
+                st.markdown(f"### Recommended item specifics ({len(rec)})")
+                st.caption(RECOMMENDED_NOTE_TAB1)
+                if rec:
+                    for x in rec:
+                        _tab1_render_aspect(x)
+                else:
+                    st.caption("None recorded.")
+
+                st.divider()
+                pdf_bytes = _tab1_build_pdf(sel, aspects)
+                st.download_button(
+                    label="Save this list as PDF",
+                    data=pdf_bytes,
+                    file_name="bynari-datasheet.pdf",
+                    mime="application/pdf",
+                    type="primary",
+                    key="tab1_pdf_dl",
+                )
 # ========================  TAB 2  ===================================
-
 with tab2:
+
     st.header("Multi-category datasheet from your LQR")
     st.write(
         "eBay produces a **Listing Quality Report** for every active "
