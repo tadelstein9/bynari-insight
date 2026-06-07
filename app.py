@@ -544,10 +544,9 @@ with tab1:
         st.session_state.tab1_suggestions = None
         st.session_state.tab1_last_query = tab1_query
         try:
-            r = requests.get(
+            r = _challenge_get(
                 f"{BROKER_BASE_TAB1}/category_suggestions.php",
-                params={"q": tab1_query},
-                headers=BROKER_HEADERS_TAB1,
+                {"q": tab1_query},
                 timeout=BROKER_TIMEOUT_TAB1,
             )
             r.raise_for_status()
@@ -588,10 +587,9 @@ with tab1:
         st.subheader(f"Datasheet — {sel['name']}")
         st.caption(f"{sel['breadcrumb']} · Category ID `{sel['id']}`")
         try:
-            r = requests.get(
+            r = _challenge_get(
                 f"{BROKER_BASE_TAB1}/item_aspects.php",
-                params={"category_id": sel["id"]},
-                headers=BROKER_HEADERS_TAB1,
+                {"category_id": sel["id"]},
                 timeout=BROKER_TIMEOUT_TAB1,
             )
             r.raise_for_status()
