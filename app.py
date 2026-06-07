@@ -382,6 +382,10 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True,
 )
+st.markdown(
+    "Want the full guided walkthrough — photos, comparable items, title, and "
+    "description? Visit **[bynari-insight.com](https://bynari-insight.com)**."
+)
 st.write("")
 
 
