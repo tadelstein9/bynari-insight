@@ -3,7 +3,7 @@
 **Effective date:** April 24, 2026
 **Last updated:** April 24, 2026
 
-Bynari Insight is built by Bynari to help eBay sellers create listings that meet eBay's own ranking and compliance requirements. This page explains what the app does with your information, what it does not do, and the choices you have.
+Bynari Insight is independent software that helps eBay sellers create listings that meet eBay's own ranking and compliance requirements. This page explains what the app does with your information, what it does not do, and the choices you have.
 
 Plain English first. Legal and regulatory language where it matters.
 
@@ -11,9 +11,9 @@ Plain English first. Legal and regulatory language where it matters.
 
 ## Who we are
 
-Bynari, a US-based software partnership.
+Bynari Insight is developed by Tom Adelstein and Paul Perotti.
 
-A dedicated contact address will be published on this page once the Bynari domain email is live. Until then, privacy questions can be raised through the GitHub repository at https://github.com/tadelstein9/bynari-insight.
+A dedicated contact address will be published on this page once the Bynari Insight domain email is live. Until then, privacy questions can be raised through the GitHub repository at https://github.com/tadelstein9/bynari-insight.
 
 ---
 
@@ -37,7 +37,7 @@ When you connect the Desktop app to eBay, it uses eBay's OAuth 2.0 flow. That me
 - eBay gives the app a time-limited access token. The token is stored on your computer, in a file only your user account can read.
 - The app reads your listings, categories, and item specifics from eBay in order to analyze them and show you results.
 
-Your listing data stays on your computer. We do not upload it to a Bynari server. We do not have a Bynari server that could receive it.
+Your listing data stays on your computer. We do not upload it to a Bynari Insight server. We do not have a Bynari Insight server that could receive it.
 
 ### Bynari Insight Web
 
@@ -47,11 +47,11 @@ The Streamlit app runs in your browser. When you use it:
 - The app calls eBay's Taxonomy API to look up categories and required fields. Those calls go from Streamlit's servers to eBay's servers. eBay sees those calls; we do not log them with your identity attached.
 - If you choose to sign in with your eBay account for personalized features, the OAuth flow works the same way as Desktop: eBay handles the login, we never see your password, and the access token lives only inside your session.
 
-We do not require you to create a Bynari account.
+We do not require you to create a Bynari Insight account.
 
 ### Both apps — what eBay sees
 
-Because both apps make API calls through Bynari's registered eBay application, eBay's own systems log that the Bynari Insight application made certain API calls on behalf of certain users. That is standard for any eBay-integrated software. eBay's privacy policy governs what they do with that log data.
+Because both apps make API calls through Bynari Insight's registered eBay application, eBay's own systems log that the Bynari Insight application made certain API calls on behalf of certain users. That is standard for any eBay-integrated software. eBay's privacy policy governs what they do with that log data.
 
 ### Analytics
 
@@ -89,7 +89,7 @@ We do not profile you, target you, score you, or sell anything we learn about yo
 
 - **Desktop app:** on your computer. In the default install, credentials are stored under your operating system user directory.
 - **Web app session data:** in Streamlit Cloud memory for the duration of your browser session. When you close the tab or the session times out, the data is gone.
-- **Bynari itself:** we do not operate a database of user data. There is nothing to breach.
+- **Bynari Insight itself:** we do not operate a database of user data. There is nothing to breach.
 
 ---
 
@@ -106,9 +106,9 @@ Three parties are in the loop by virtue of how the software works. We have no co
 ## Your choices
 
 - **Disconnect at any time.** In eBay's account settings, under "Apps you've connected," you can revoke Bynari Insight's access. The next API call from the app will fail cleanly; you can reconnect or not.
-- **Uninstall the Desktop app** — delete the application folder and the credentials file. Nothing is left behind on any Bynari-controlled system, because there is no Bynari-controlled system holding your data.
+- **Uninstall the Desktop app** — delete the application folder and the credentials file. Nothing is left behind on any Bynari Insight-controlled system, because there is no Bynari Insight-controlled system holding your data.
 - **Close the browser tab** for the Web app. Session data is discarded.
-- **Raise an issue on GitHub** if you have questions, until the Bynari domain contact address is live.
+- **Raise an issue on GitHub** if you have questions, until the Bynari Insight domain contact address is live.
 
 ---
 

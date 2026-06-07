@@ -58,7 +58,7 @@ st.markdown(
 
 
 # --------------------------------------------------------------------
-# Bynari API (api.tadelstein.com)
+# Bynari Insight API (api.tadelstein.com)
 # --------------------------------------------------------------------
 
 BYNARI_API_BASE = "https://api.tadelstein.com"
@@ -95,7 +95,7 @@ def _challenge_get(url: str, params: dict, timeout: int = 15):
 
 
 def _api_get(url: str, params: dict, timeout: int = 15):
-    """Make a GET request to the Bynari API. Returns (data, error_str)."""
+    """Make a GET request to the Bynari Insight API. Returns (data, error_str)."""
     try:
         r = _challenge_get(url, params, timeout=timeout)
     except requests.exceptions.Timeout:
@@ -293,7 +293,7 @@ def build_single_category_datasheet(cat: dict, query: str = "") -> str:
     out.append(f"REQUIRED ITEM SPECIFICS ({len(required)})")
     out.append("-" * 60)
     if not required:
-        out.append("  (Bynari has no required fields recorded for this "
+        out.append("  (Bynari Insight has no required fields recorded for this "
                    "category — consult an LLM.)")
     else:
         for s in required:
@@ -303,7 +303,7 @@ def build_single_category_datasheet(cat: dict, query: str = "") -> str:
     out.append(f"RECOMMENDED ITEM SPECIFICS ({len(recommended)})")
     out.append("-" * 60)
     if not recommended:
-        out.append("  (Bynari has no recommended fields recorded for this "
+        out.append("  (Bynari Insight has no recommended fields recorded for this "
                    "category — consult an LLM.)")
     else:
         for s in recommended:
@@ -321,7 +321,7 @@ def build_multi_category_datasheet(category_pairs: list) -> str:
     out.append("=" * 60)
     out.append("")
     out.append("Your Listing Quality Report has findings in these")
-    out.append("categories. Below is the structural data Bynari has")
+    out.append("categories. Below is the structural data Bynari Insight has")
     out.append("for each one.")
     out.append("")
 
@@ -331,7 +331,7 @@ def build_multi_category_datasheet(category_pairs: list) -> str:
             out.append(f"{lqr_name} ({condition})")
             out.append("=" * 60)
             out.append("")
-            out.append("  Bynari does not have data for this category by")
+            out.append("  Bynari Insight does not have data for this category by")
             out.append("  name. Use Tab 1 (Category Datasheet) to look it")
             out.append("  up by eBay URL or category ID.")
             out.append("")
@@ -404,7 +404,7 @@ tab1, tab2, tab3 = st.tabs([
 with tab1:
     st.header("Category Finder")
     st.write(
-        "Describe what you're selling in plain English. Bynari finds the "
+        "Describe what you're selling in plain English. Bynari Insight finds the "
         "right eBay category, then gives you the structural data you need "
         "to list it — what's required, what's recommended, what allowed "
         "values eBay accepts."
@@ -643,7 +643,7 @@ with tab2:
     st.header("Multi-category datasheet from your LQR")
     st.write(
         "eBay produces a **Listing Quality Report** for every active "
-        "seller. It flags which categories of yours need work. Bynari "
+        "seller. It flags which categories of yours need work. Bynari Insight "
         "reads the report only to learn which categories to produce "
         "datasheets for — it does not reproduce eBay's analysis."
     )
@@ -723,7 +723,7 @@ with tab2:
                     if cat is None:
                         st.markdown(
                             f"- **{cat_name}** ({condition}) — "
-                            "_no Bynari data_"
+                            "_no Bynari Insight data_"
                         )
                     else:
                         st.markdown(
@@ -754,7 +754,7 @@ with tab2:
 with tab3:
     st.header("Analyze a Listing")
     st.write(
-        "Paste an eBay item number below. Bynari fetches the listing's "
+        "Paste an eBay item number below. Bynari Insight fetches the listing's "
         "public data and compares it against the structural data we have "
         "for that category — what's required, what's recommended, what's "
         "missing."
@@ -806,13 +806,13 @@ with tab3:
                 elif cat_id:
                     st.markdown(
                         f"**Category ID:** `{cat_id}` "
-                        "_(not in Bynari's data — analysis below uses "
+                        "_(not in Bynari Insight's data — analysis below uses "
                         "listing data only)_"
                     )
                 else:
                     st.warning(
                         "eBay didn't return a category ID for this "
-                        "listing. Comparison against Bynari's data is "
+                        "listing. Comparison against Bynari Insight's data is "
                         "not possible without it."
                     )
 
