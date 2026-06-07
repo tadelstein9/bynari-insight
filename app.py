@@ -189,7 +189,11 @@ def fetch_listing(item_id: str):
     try:
         return r.json(), None
     except ValueError:
-        return None, "Couldn't parse the response from eBay."
+        snippet = (r.text or "")[:300].replace("\n", " ")
+        return None, (
+            f"Couldn't parse the response (HTTP {r.status_code}, "
+            f"{len(r.text or '')} bytes). First 300 chars: {snippet}"
+        )
 
 
 def translate_browse_response(api_data: dict) -> dict:
