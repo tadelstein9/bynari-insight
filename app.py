@@ -68,11 +68,36 @@ BYNARI_CATEGORY_URL = f"{BYNARI_API_BASE}/category.php"
 # User-Agent so HostGator's mod_security doesn't reject us as a bot.
 BYNARI_UA = {"User-Agent": "Mozilla/5.0 (Bynari Insight Streamlit)"}
 
+# Some hosting layers gate API responses behind a one-time JavaScript cookie
+# challenge: they return a tiny <script> that sets a cookie and reloads. A real
+# browser runs the JS and passes invisibly; Python requests can't run JS, so it
+# keeps getting the challenge and never the JSON. We read the cookie out of the
+# challenge, set it on a persistent session, and retry — exactly what a browser
+# does. This is why the app worked from a browser but failed from the server.
+_SESSION = requests.Session()
+_SESSION.headers.update(BYNARI_UA)
+
+
+def _challenge_get(url: str, params: dict, timeout: int = 15):
+    """GET that transparently solves the host's JS cookie challenge."""
+    import re
+    r = _SESSION.get(url, params=params, timeout=timeout)
+    for _ in range(2):
+        body = r.text or ""
+        if "document.cookie" not in body or "document.location" not in body:
+            break
+        m = re.search(r'document\.cookie\s*=\s*"([^"=]+)=([^";]+)"', body)
+        if not m:
+            break
+        _SESSION.cookies.set(m.group(1), m.group(2))
+        r = _SESSION.get(url, params=params, timeout=timeout)
+    return r
+
 
 def _api_get(url: str, params: dict, timeout: int = 15):
     """Make a GET request to the Bynari API. Returns (data, error_str)."""
     try:
-        r = requests.get(url, params=params, headers=BYNARI_UA, timeout=timeout)
+        r = _challenge_get(url, params, timeout=timeout)
     except requests.exceptions.Timeout:
         return None, "Request timed out. Try again in a moment."
     except requests.exceptions.RequestException as e:
@@ -168,12 +193,7 @@ def extract_category_id(text: str):
 def fetch_listing(item_id: str):
     """Returns (data_dict, error_string)."""
     try:
-        r = requests.get(
-            BYNARI_ITEM_URL,
-            params={"item": item_id},
-            headers=BYNARI_UA,
-            timeout=15,
-        )
+        r = _challenge_get(BYNARI_ITEM_URL, {"item": item_id}, timeout=15)
     except requests.exceptions.Timeout:
         return None, "Request timed out. Try again in a moment."
     except requests.exceptions.RequestException as e:
